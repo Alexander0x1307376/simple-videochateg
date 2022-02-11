@@ -8,7 +8,7 @@ export interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({title}) => {
   return (
-    <div className='border-b pb-2'>
+    <div>
       <span className='font-medium'>{title}</span>
     </div>
   )

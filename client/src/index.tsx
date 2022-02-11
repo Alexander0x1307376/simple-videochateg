@@ -3,10 +3,27 @@ import ReactDOM from 'react-dom';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { VideoConnectionProvider } from './connection/videoConnectionContext';
+import { BrowserRouter } from "react-router-dom";
+import * as process from 'process';
+
+
+// для корректной работы пирингого соединения
+(window as any).global = window;
+(window as any).process = process;
+(window as any).Buffer = [];
+
+
+
+
 
 ReactDOM.render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <VideoConnectionProvider>
+        <App />
+      </VideoConnectionProvider>
+    </BrowserRouter>
   </React.StrictMode>,
   document.getElementById('root')
 );
