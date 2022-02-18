@@ -4,7 +4,6 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { VideoConnectionProvider } from './connection/videoConnectionContext';
-import { BrowserRouter } from "react-router-dom";
 import * as process from 'process';
 
 
@@ -13,17 +12,11 @@ import * as process from 'process';
 (window as any).process = process;
 (window as any).Buffer = [];
 
-
-
-
-
 ReactDOM.render(
   <React.StrictMode>
-    <BrowserRouter>
       <VideoConnectionProvider>
         <App />
       </VideoConnectionProvider>
-    </BrowserRouter>
   </React.StrictMode>,
   document.getElementById('root')
 );

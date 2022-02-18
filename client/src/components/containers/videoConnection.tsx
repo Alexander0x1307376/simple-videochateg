@@ -1,5 +1,5 @@
 import React, { useContext, useState } from "react";
-import { MdOutlineKeyboardVoice, MdOutlinePhoneDisabled, MdOutlinePictureInPictureAlt, MdOutlineSettingsOverscan } from 'react-icons/md';
+import { MdMic, MdMicOff, MdOutlinePhoneDisabled, MdOutlinePictureInPictureAlt } from 'react-icons/md';
 import { CallStatus, VideoConnectionContext } from "../../connection/videoConnectionContext";
 import CircleButton from "../shared/circleButton";
 import VideoSection from "../shared/videoSection";
@@ -15,7 +15,9 @@ const VideoConnection: React.FC = () => {
 
   const {
     leaveCall,
-    callStatus
+    callStatus,
+    toggleMicrophone,
+    isMicrophoneEnabled
   } = useContext(VideoConnectionContext);
 
 
@@ -26,17 +28,20 @@ const VideoConnection: React.FC = () => {
       </div>
       <div className='flex justify-center py-2'>
         {/* Переключение видов */}
-        <div className='px-1'>
-          <CircleButton 
-            icon={MdOutlinePictureInPictureAlt} 
-            onClick={() => setIsCollocutorMainView(prev => !prev)}
-          />
-        </div>
+        {
+          callStatus === CallStatus.accepted &&
+          <div className='px-1'>
+            <CircleButton 
+              icon={MdOutlinePictureInPictureAlt} 
+              onClick={() => setIsCollocutorMainView(prev => !prev)}
+            />
+          </div>
+        }
         {/* Мут микрофона */}
         <div className='px-1'>
           <CircleButton
-            icon={MdOutlineKeyboardVoice}
-            onClick={() => {}}
+            icon={isMicrophoneEnabled ? MdMic : MdMicOff}
+            onClick={toggleMicrophone}
           />
         </div>
         

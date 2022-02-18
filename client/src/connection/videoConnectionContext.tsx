@@ -1,8 +1,9 @@
-import React, { createContext, useCallback, useEffect, useRef, useState } from "react";
+import React, { createContext, useEffect, useRef, useState } from "react";
 import { io } from 'socket.io-client';
 import Peer from 'simple-peer';
 import { serverUrl } from "../constants/server";
-import useHookWithRefCallback from "../utils/useHookWithRefCallback";
+
+
 
 
 export interface VideoConnectionContextProps {
@@ -12,10 +13,12 @@ export interface VideoConnectionContextProps {
   collocutorVideo: React.ClassAttributes<HTMLVideoElement>['ref'];
   call: any;
   callStatus: CallStatus;
+  isMicrophoneEnabled: boolean;
   callCollocutor: (id: string) => void;
   answerCall: () => void;
   leaveCall: () => void;
   declineCall: () => void;
+  toggleMicrophone: () => void;
 }
 
 export const VideoConnectionContext = createContext<VideoConnectionContextProps>({} as VideoConnectionContextProps);
@@ -34,21 +37,19 @@ export enum CallStatus {
 export const VideoConnectionProvider = ({ children }: { children: React.ReactElement }) => {
 
   const [thisSocketId, setThisSocketId] = useState<string>('');
-
   // наше видео
   const thisVideo = useRef<any>(); // html элемент video, где будет наша рожа
   const [stream, setStream] = useState<MediaStream>(); // стрим с наших вебки и микрофона
+  // информация о входящем вызове
+  const [call, setCall] = useState<any>({});
   
   const collocutorVideo = useRef<any>(); // html элемент video с рожей собеседника
-
+  
   // пиринговое соединение
   const peerConnection = useRef<any>();
-
-  // информация о текущем вызове
+  
   const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.init);
-  const [call, setCall] = useState<any>({}); // данные вызова
-
-
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     // получаем аудио и видеосигнал
@@ -63,24 +64,15 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
 
     // как нам звонят -  записываем информацию вызова
     socket.on('callUser', ({from, signal}) => {
-      
       setCallStatus(CallStatus.collocutorIsCalling);
-      console.log('Нам звонят!', from);
-
-      setCall({
-        isReceivingCall: true,
-        from,
-        signal
-      });
+      setCall({ isReceivingCall: true, from, signal });
     });
 
     socket.on('callDeclined', () => {
-      console.log('Вызов отклонён!');
       setCallStatus(CallStatus.declined);
     });
 
     socket.on('callEnded', () => {
-      console.log('Вызов завершён!');
       setCallStatus(CallStatus.ended);
     });
 
@@ -149,6 +141,14 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
     setCall({});
   }
 
+  const toggleMicrophone = () => {
+    if (stream?.getAudioTracks()[0]) {
+      setIsMicrophoneEnabled(prev => {
+        stream.getAudioTracks()[0].enabled = !prev;
+        return !prev;
+      });
+    }
+  }
 
   return (
     <VideoConnectionContext.Provider value={{
@@ -161,6 +161,9 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
       call,
       callStatus,
       
+      toggleMicrophone,
+      isMicrophoneEnabled,
+
       callCollocutor,
       answerCall,
       leaveCall,
