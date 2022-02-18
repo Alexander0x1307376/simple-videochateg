@@ -1,8 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
-import { Server, Socket } from 'socket.io';
-import { getCurrentTime } from './utils/time';
+import { Server } from 'socket.io';
 import { log } from './utils/logger';
 
 const app = express();
@@ -18,7 +17,7 @@ const io = new Server(server, {
 app.use(cors());
 
 
-const port = process.env.PORT || 8001;
+const port = process.env.PORT || 8000;
 
 
 app.get('/', (req, res) => {

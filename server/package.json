@@ -5,7 +5,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "yarn nodemon --require dotenv/config index.ts --inspect",
-    "compile": "tsc --watch"
+    "compile": "tsc",
+    "start:prod": "node ./out/index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
