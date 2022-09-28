@@ -67,7 +67,8 @@ io.on('connection', (socket) => {
 
     const callStatus = callService.startCall(socket.id, collocutorId);
 
-    if (checkIsSocketIsConnected(io, collocutorId)) {
+    const isThereCollocutor = checkIsSocketIsConnected(io, collocutorId);
+    if (!isThereCollocutor) {
       socket.emit(Events.NO_COLLOCUTOR, { collocutorId });
     }
     else if (callStatus === 'otherCallInProgress') {
