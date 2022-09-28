@@ -20,6 +20,9 @@ const VideoConnection: React.FC = () => {
     isMicrophoneEnabled
   } = useContext(VideoConnectionContext);
 
+  const handleSwitchView = () => {
+    setIsCollocutorMainView(!isCollocutorMainView);
+  }
 
   return (
     <div>
@@ -33,7 +36,7 @@ const VideoConnection: React.FC = () => {
           <div className='px-1'>
             <CircleButton 
               icon={MdOutlinePictureInPictureAlt} 
-              onClick={() => setIsCollocutorMainView(prev => !prev)}
+              onClick={handleSwitchView}
             />
           </div>
         }

@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import cors from 'cors';
 import { Server } from 'socket.io';
 import { log } from './utils/logger';
+import { CallsService } from './CallsService';
 
 const app = express();
 const server = createServer(app);
@@ -25,50 +26,94 @@ app.get('/', (req, res) => {
 });
 
 
-enum Emits {
+enum Events {
   SOCKET_ID = 'socketId',
   CALL_USER = 'callUser',
+  OTHER_CALL_IN_PROGRESS = 'otherCallInProgress',
+  CANCEL_CALL_USER = 'cancelCallUser',
   CALL_ACCEPTED = 'callAccepted',
-  CALL_ENDED = 'callEnded',
   CALL_DECLINED = 'callDeclined',
-  DISCONNECTED = 'clientDisconnected'
+  CALL_ENDED = 'callEnded',
+  COLLOCUTOR_DISCONNECTED = 'clientDisconnected'
 }
 
+const callService = new CallsService();
 
 io.on('connection', (socket) => {
 
   log(`Соединение:`, socket.id);
-  socket.emit(Emits.SOCKET_ID, socket.id);
+  socket.emit(Events.SOCKET_ID, socket.id);
 
 
   socket.on('disconnect', () => {
     log(`Отключение: ${socket.id}`);
-    socket.broadcast.emit(Emits.DISCONNECTED, { socketId: socket.id });
+
+    const callData = callService.endCall(socket.id);
+    if (callData) {
+      const collocutorId = callData.receiverId === socket.id 
+        ? callData.receiverId 
+        : callData.senderId;
+      io.to(collocutorId).emit(Events.COLLOCUTOR_DISCONNECTED, { collocutorId });
+    }
+
   });
 
 
-  socket.on('callUser', ({ collocutorId, signalData, from }) => {
-    log(`Звонок: ${from} -> ${collocutorId}`);
-    io.to(collocutorId).emit(Emits.CALL_USER, { signal: signalData, from });
+  socket.on('callUser', ({ collocutorId, signalData }) => {
+    log(`Звонок: ${socket.id} -> ${collocutorId}`);
+
+    const callStatus = callService.startCall(socket.id, collocutorId);
+    
+    if (callStatus === 'otherCallInProgress') {
+      socket.emit(Events.OTHER_CALL_IN_PROGRESS, { collocutorId });
+    }
+    else if(callStatus === 'ok') {
+      io.to(collocutorId).emit(Events.CALL_USER, { signal: signalData, from: socket.id });
+    }
+
   });
 
 
-  socket.on('answerCall', (data) => {
-    log(`Звонок: ${data.to} -> ${socket.id}. Ответ`);
-    io.to(data.to).emit(Emits.CALL_ACCEPTED, data.signal);
+  socket.on('cancelCallUser', ({ collocutorId }) => {
+    log(`Звонок: ${socket.id} -> ${collocutorId}. Отменён звонящим`);
+
+    const callStatus = callService.endCall(socket.id);
+    if (callStatus) {
+      io.to(collocutorId).emit(Events.CANCEL_CALL_USER, socket.id);
+    }
+
   });
 
 
-  socket.on('leaveCall', (data) => {
-    log(`Звонок: ${data.to} -> ${socket.id}. Завершение`);
-    io.to(data.to).emit(Emits.CALL_ENDED);
-    // io.to(data.to).emit(Emits.CALL_ENDED, data.signal);
+  // принимаем входящий звонок
+  socket.on('answerCall', ({ signal, collocutorId }) => {
+    log(`Звонок: ${collocutorId} -> ${socket.id}. Ответ`);
+
+    const callStatus = callService.acceptCall(collocutorId);
+    log(`callStatus: ${callStatus}`);
+    if (callStatus === 'ok') {
+      io.to(collocutorId).emit(Events.CALL_ACCEPTED, signal);
+    }
+
   });
 
 
-  socket.on('declineCall', (data) => {
-    log(`Звонок: ${data.to} -> ${socket.id}. Отклонён принимающим`);
-    io.to(data.to).emit(Emits.CALL_DECLINED);
+  socket.on('leaveCall', ({ collocutorId }) => {
+    log(`Звонок: ${collocutorId} : ${socket.id}. Завершен`);
+
+    const callStatus = callService.endCall(socket.id);
+    if (callStatus) {
+      io.to(collocutorId).emit(Events.CALL_ENDED, socket.id);
+    }
+  });
+
+
+  socket.on('declineCall', ({ collocutorId }) => {
+    log(`Звонок: ${collocutorId} -> ${socket.id}. Отклонён принимающим`);
+
+    callService.endCall(socket.id);
+
+    io.to(collocutorId).emit(Events.CALL_DECLINED);
   });
 
 });

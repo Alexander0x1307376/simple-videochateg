@@ -5,6 +5,14 @@ import { serverUrl } from "../constants/server";
 
 
 
+export enum CallStatus {
+  init = "init",
+  collocutorIsCalling = "collocutorIsCalling",
+  thisUserIsCalling = "thisUserIsCalling",
+  accepted = "accepted",
+  declined = "declined",
+  ended = "ended"
+}
 
 export interface VideoConnectionContextProps {
   thisSocketId: string;
@@ -25,14 +33,7 @@ export const VideoConnectionContext = createContext<VideoConnectionContextProps>
 
 const socket = io(serverUrl);
 
-export enum CallStatus { 
-  init = "init", 
-  collocutorIsCalling = "collocutorIsCalling", 
-  thisUserIsCalling = "thisUserIsCalling",
-  accepted = "accepted", 
-  declined = "declined", 
-  ended = "ended"
-}
+
 
 export const VideoConnectionProvider = ({ children }: { children: React.ReactElement }) => {
 
@@ -44,14 +45,18 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   const [call, setCall] = useState<any>({});
   
   const collocutorVideo = useRef<any>(); // html элемент video с рожей собеседника
-  
+
+  //socketId собеседника - хранится во время вызова
+  const [collocutorId, setCollocutorId] = useState<string>(''); 
+
   // пиринговое соединение
-  const peerConnection = useRef<any>();
+  const peerConnection = useRef<Peer.Instance | undefined>();
   
   const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.init);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState<boolean>(true);
 
   useEffect(() => {
+
     // получаем аудио и видеосигнал
     navigator.mediaDevices.getUserMedia({video: true, audio: true})
     .then((stream) => {
@@ -60,24 +65,46 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
     });
 
     // при событии socketId записываем свой id сокета
-    socket.on('socketId', (id) => { setThisSocketId(id); });
+    socket.on('socketId', (id) => { 
+      console.log('socket:socketId');
+      setThisSocketId(id); 
+    });
+
 
     // как нам звонят -  записываем информацию вызова
     socket.on('callUser', ({from, signal}) => {
+      console.log('socket:callUser');
       setCallStatus(CallStatus.collocutorIsCalling);
-      setCall({ isReceivingCall: true, from, signal });
+      setCollocutorId(from);
+      setCall({ isReceivingCall: true, signal });
     });
+
 
     socket.on('callDeclined', () => {
+      console.log('socket:callDeclined');
       setCallStatus(CallStatus.declined);
+      setCollocutorId('');
     });
+
 
     socket.on('callEnded', () => {
+      console.log('socket:callEnded')
+      setCallStatus(CallStatus.ended);
+      clearPeer();
+    });
+
+
+    socket.on('clientDisconnected', () => {
+      console.log('socket:clientDisconnected');
       setCallStatus(CallStatus.ended);
     });
 
-    socket.on('clientDisconnected', () => {
-      setCallStatus(CallStatus.ended);
+    // когда пользователь отвечает
+    socket.on('callAccepted', (signal) => {
+      console.log('socket:callAccepted');
+      if (!peerConnection.current) return;
+      setCallStatus(CallStatus.accepted);
+      peerConnection.current.signal(signal);
     });
 
   }, [thisVideo]);
@@ -85,15 +112,22 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
 
   // Отвечаем на звонок
   const answerCall = () => {
+    console.log('method:answerCall');
+
     setCallStatus(CallStatus.accepted);
     const peer = new Peer({ initiator: false, trickle: false, stream });
 
-    peer.on('signal', (data) => {
-      socket.emit('answerCall', { signal: data, to: call.from });
+    peer.on('signal', (signal) => {
+      socket.emit('answerCall', { signal, collocutorId });
     });
     peer.on('stream', (currentStream) => {
       collocutorVideo.current.srcObject = currentStream;
     });
+
+    peer.on('close', () => {
+      peer.removeAllListeners();
+    });
+
     peer.signal(call.signal);
     peerConnection.current = peer;
 
@@ -101,44 +135,65 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
 
   // Звоним второму юзеру
   const callCollocutor = (id: string) => {
+    console.log('method:callCollocutor');
+
     setCallStatus(CallStatus.thisUserIsCalling);
     
-    const peer = new Peer({ initiator: true, trickle: false, stream });
+    setPeer(true, stream!, {
 
-    peer.on('signal', (data) => {
-      socket.emit('callUser', {
-        collocutorId: id, // id сокета пользователя, которому звоним
-        signalData: data, // сигнальные данные пира
-        from: thisSocketId // наш сокет, чтоб юзер знал кто звонит
-      });
+      onSignal: (data) => {
+        setCollocutorId(id);
+        socket.emit('callUser', {
+          collocutorId: id, // id сокета пользователя, которому звоним
+          from: thisSocketId, // наш сокет, чтоб юзер знал кто звонит
+          signalData: data // сигнальные данные пира
+        });
+      },
+
+      onStream: (currentStream) => {
+        collocutorVideo.current.srcObject = currentStream;
+      },
+
     });
-
-    peer.on('stream', (currentStream) => {
-      collocutorVideo.current.srcObject = currentStream;
-    });
-
-    // когда пользователь отвечает
-    socket.on('callAccepted', (signal) => {
-      setCallStatus(CallStatus.accepted);
-      peer.signal(signal); // сигналим о соединении?!
-    })
   }
 
 
   // отклоняем звонок
   const declineCall = () => {
+    console.log('method:declineCall');
+
     setCallStatus(CallStatus.ended);
-    socket.emit('declineCall', { to: call.from });
+    socket.emit('declineCall', { collocutorId });
   }
 
   // завершаем звонок
   const leaveCall = () => {
-    console.log('завершаем звонок')
+    console.log('method:leaveCall');
+
+    socket.emit('leaveCall', { collocutorId });
     setCallStatus(CallStatus.ended);
-    socket.emit('leaveCall', { to: call.from });
-    if (peerConnection.current)
-      peerConnection.current.destroy();
+    clearPeer();
     setCall({});
+  }
+
+
+  const setPeer = (initiator: boolean, stream: MediaStream, eventHandlers: {
+    onSignal?: (signal: Peer.SignalData) => void;
+    onStream?: (stream: MediaStream) => void;
+    onClose?: () => void;
+  }) => {
+    const peer = new Peer({ initiator, trickle: false, stream });
+    eventHandlers.onSignal && peer.on('signal', eventHandlers.onSignal);
+    eventHandlers.onStream && peer.on('stream', eventHandlers.onStream);
+    eventHandlers.onClose && peer.on('close', eventHandlers.onClose);
+    peerConnection.current = peer;
+  }
+
+  const clearPeer = () => {
+    if (!peerConnection.current) return;
+    peerConnection.current.removeAllListeners();
+    peerConnection.current.destroy();
+    peerConnection.current = undefined;
   }
 
   const toggleMicrophone = () => {

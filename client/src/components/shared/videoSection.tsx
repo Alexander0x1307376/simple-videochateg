@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import { MdCall, MdPhone, MdPhoneDisabled, MdPhoneEnabled } from "react-icons/md";
+import { MdPhone, MdPhoneDisabled } from "react-icons/md";
 import { CallStatus, VideoConnectionContext } from "../../connection/videoConnectionContext";
 import CircleButton from "./circleButton";
 
@@ -13,7 +13,7 @@ export interface VideoSectionProps {
 const converSationClasses = {
   mainElement: "h-full w-full",
   thisVideo: "h-full w-full rounded-lg overflow-hidden",
-  collocutorVideo: "h-[6rem] w-auto absolute right-2 bottom-2 z-10 rounded overflow-hidden bg-slate-500",
+  collocutorVideo: "h-[6rem] w-auto absolute right-2 bottom-2 z-10 rounded overflow-hidden bg-cyan-700",
   callMessage: "hidden",
   callButtons: "hidden",
   idleMessage: "hidden"
@@ -110,7 +110,6 @@ const VideoSection: React.FC<VideoSectionProps> = ({isCollocutorMainView}) => {
             }
           })()}
         </div>
-
         {/* Наша морда */}
         <div className={currentClasses.thisVideo}>
           { stream 
