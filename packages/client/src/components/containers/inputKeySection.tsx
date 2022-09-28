@@ -29,9 +29,9 @@ const InputKeySection: React.FC = () => {
         />
 
         <button 
-          className={isInputAvaliable ? buttonStyle.default : buttonStyle.disabled}
+          className={isInputAvaliable && inputValue ? buttonStyle.default : buttonStyle.disabled}
           onClick={() => {
-            if (isInputAvaliable) callCollocutor(inputValue)
+            if (isInputAvaliable && inputValue) callCollocutor(inputValue)
           }}
         >
           Звонок

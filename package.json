@@ -1,0 +1,13 @@
+{
+  "packageManager": "yarn@3.2.3",
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ]
+  },
+  "scripts": {
+    "start": "yarn workspaces foreach -pi run start",
+    "start:client": "yarn workspace client run start",
+    "start:server": "yarn workspace server run start"
+  }
+}

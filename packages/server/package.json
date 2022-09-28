@@ -2,9 +2,10 @@
   "name": "server",
   "version": "1.0.0",
   "main": "index.js",
+  "private": true,
   "license": "MIT",
   "scripts": {
-    "dev": "yarn nodemon --require dotenv/config index.ts --inspect",
+    "start": "yarn nodemon --require dotenv/config index.ts --inspect",
     "compile": "tsc",
     "start:prod": "node ./out/index.js"
   },

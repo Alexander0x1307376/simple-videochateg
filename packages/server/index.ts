@@ -4,6 +4,7 @@ import cors from 'cors';
 import { Server } from 'socket.io';
 import { log } from './utils/logger';
 import { CallsService } from './CallsService';
+import { checkIsSocketIsConnected } from './utils/socketUtils';
 
 const app = express();
 const server = createServer(app);
@@ -30,12 +31,14 @@ enum Events {
   SOCKET_ID = 'socketId',
   CALL_USER = 'callUser',
   OTHER_CALL_IN_PROGRESS = 'otherCallInProgress',
+  NO_COLLOCUTOR = 'noCollocutor',
   CANCEL_CALL_USER = 'cancelCallUser',
   CALL_ACCEPTED = 'callAccepted',
   CALL_DECLINED = 'callDeclined',
   CALL_ENDED = 'callEnded',
   COLLOCUTOR_DISCONNECTED = 'clientDisconnected'
 }
+
 
 const callService = new CallsService();
 
@@ -63,8 +66,11 @@ io.on('connection', (socket) => {
     log(`Звонок: ${socket.id} -> ${collocutorId}`);
 
     const callStatus = callService.startCall(socket.id, collocutorId);
-    
-    if (callStatus === 'otherCallInProgress') {
+
+    if (checkIsSocketIsConnected(io, collocutorId)) {
+      socket.emit(Events.NO_COLLOCUTOR, { collocutorId });
+    }
+    else if (callStatus === 'otherCallInProgress') {
       socket.emit(Events.OTHER_CALL_IN_PROGRESS, { collocutorId });
     }
     else if(callStatus === 'ok') {
