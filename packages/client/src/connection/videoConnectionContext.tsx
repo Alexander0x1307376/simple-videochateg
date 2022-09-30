@@ -2,16 +2,19 @@ import React, { createContext, useEffect, useRef, useState } from "react";
 import { io } from 'socket.io-client';
 import Peer from 'simple-peer';
 import { serverUrl } from "../constants/server";
-
+import { CallEvents } from "@simple-videochateg/shared";
 
 
 export enum CallStatus {
-  init = "init",
-  collocutorIsCalling = "collocutorIsCalling",
-  thisUserIsCalling = "thisUserIsCalling",
-  accepted = "accepted",
-  declined = "declined",
-  ended = "ended"
+  INIT = "INIT",
+  INCOMING_CALL = "INCOMING_CALL",
+  OUTCOMING_CALL = "OUTCOMING_CALL",
+  CALL_ACCEPTED = "CALL_ACCEPTED",
+  CALL_DECLINED = "CALL_DECLINED",
+  CALL_CANCELLED = "CALL_CANCELLED",
+  CALL_DISCONNECTED = "CALL_DISCONNECTED",
+  CALL_ENDED = "CALL_ENDED",
+  NO_COLLOCUTOR = "NO_COLLOCUTOR"
 }
 
 export interface VideoConnectionContextProps {
@@ -26,6 +29,7 @@ export interface VideoConnectionContextProps {
   answerCall: () => void;
   leaveCall: () => void;
   declineCall: () => void;
+  cancelCall: () => void;
   toggleMicrophone: () => void;
 }
 
@@ -52,7 +56,7 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   // пиринговое соединение
   const peerConnection = useRef<Peer.Instance | undefined>();
   
-  const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.init);
+  const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INIT);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState<boolean>(true);
 
   useEffect(() => {
@@ -65,45 +69,52 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
     });
 
     // при событии socketId записываем свой id сокета
-    socket.on('socketId', (id) => { 
+    socket.on(CallEvents.SOCKET_ID, (id) => { 
       console.log('socket:socketId');
       setThisSocketId(id); 
     });
 
 
     // как нам звонят -  записываем информацию вызова
-    socket.on('callUser', ({from, signal}) => {
+    socket.on(CallEvents.CALL_USER, ({from, signal}) => {
       console.log('socket:callUser');
-      setCallStatus(CallStatus.collocutorIsCalling);
+      setCallStatus(CallStatus.INCOMING_CALL);
       setCollocutorId(from);
       setCall({ isReceivingCall: true, signal });
     });
 
 
-    socket.on('callDeclined', () => {
+    socket.on(CallEvents.CALL_DECLINED, () => {
       console.log('socket:callDeclined');
-      setCallStatus(CallStatus.declined);
+      setCallStatus(CallStatus.CALL_DECLINED);
       setCollocutorId('');
     });
 
 
-    socket.on('callEnded', () => {
-      console.log('socket:callEnded')
-      setCallStatus(CallStatus.ended);
+    socket.on(CallEvents.CALL_CANCELED, ({ collocutorId }: { collocutorId: string }) => {
+      console.log('socket:callCanceled');
+      setCallStatus(CallStatus.CALL_CANCELLED);
       clearPeer();
     });
 
 
-    socket.on('clientDisconnected', () => {
+    socket.on(CallEvents.CALL_ENDED, () => {
+      console.log('socket:callEnded')
+      setCallStatus(CallStatus.CALL_ENDED);
+      clearPeer();
+    });
+
+
+    socket.on(CallEvents.COLLOCUTOR_DISCONNECTED, () => {
       console.log('socket:clientDisconnected');
-      setCallStatus(CallStatus.ended);
+      setCallStatus(CallStatus.CALL_DISCONNECTED);
     });
 
     // когда пользователь отвечает
-    socket.on('callAccepted', (signal) => {
+    socket.on(CallEvents.CALL_ACCEPTED, (signal) => {
       console.log('socket:callAccepted');
       if (!peerConnection.current) return;
-      setCallStatus(CallStatus.accepted);
+      setCallStatus(CallStatus.CALL_ACCEPTED);
       peerConnection.current.signal(signal);
     });
 
@@ -114,11 +125,11 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   const answerCall = () => {
     console.log('method:answerCall');
 
-    setCallStatus(CallStatus.accepted);
+    setCallStatus(CallStatus.CALL_ACCEPTED);
     const peer = new Peer({ initiator: false, trickle: false, stream });
 
     peer.on('signal', (signal) => {
-      socket.emit('answerCall', { signal, collocutorId });
+      socket.emit(CallEvents.ANSWER_CALL, { signal, collocutorId });
     });
     peer.on('stream', (currentStream) => {
       collocutorVideo.current.srcObject = currentStream;
@@ -134,27 +145,35 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   }
 
   // Звоним второму юзеру
-  const callCollocutor = (id: string) => {
-    console.log('method:callCollocutor');
+  const callCollocutor = async (id: string) => {
+    console.log('method:callCollocutor', id);
 
-    setCallStatus(CallStatus.thisUserIsCalling);
-    
-    setPeer(true, stream!, {
+    socket.emit(CallEvents.CALL_USER_CHECK, { collocutorId: id }, (response: { callAllowed: boolean }) => {
+      console.log('CheckResponse!', response);
+      if(response.callAllowed) {
+        setCallStatus(CallStatus.OUTCOMING_CALL);
 
-      onSignal: (data) => {
-        setCollocutorId(id);
-        socket.emit('callUser', {
-          collocutorId: id, // id сокета пользователя, которому звоним
-          from: thisSocketId, // наш сокет, чтоб юзер знал кто звонит
-          signalData: data // сигнальные данные пира
+        setPeer(true, stream!, {
+          onSignal: (data) => {
+            setCollocutorId(id);
+            socket.emit(CallEvents.CALL_USER, {
+              collocutorId: id, // id сокета пользователя, которому звоним
+              from: thisSocketId, // наш сокет, чтоб юзер знал кто звонит
+              signalData: data // сигнальные данные пира
+            });
+          },
+          onStream: (currentStream) => {
+            collocutorVideo.current.srcObject = currentStream;
+          },
         });
-      },
-
-      onStream: (currentStream) => {
-        collocutorVideo.current.srcObject = currentStream;
-      },
-
+      }
+      else {
+        setCallStatus(CallStatus.NO_COLLOCUTOR);
+      }
     });
+
+
+
   }
 
 
@@ -162,7 +181,7 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   const declineCall = () => {
     console.log('method:declineCall');
 
-    setCallStatus(CallStatus.ended);
+    setCallStatus(CallStatus.CALL_ENDED);
     socket.emit('declineCall', { collocutorId });
   }
 
@@ -170,8 +189,17 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
   const leaveCall = () => {
     console.log('method:leaveCall');
 
-    socket.emit('leaveCall', { collocutorId });
-    setCallStatus(CallStatus.ended);
+    socket.emit(CallEvents.LEAVE_CALL, { collocutorId });
+    setCallStatus(CallStatus.CALL_ENDED);
+    clearPeer();
+    setCall({});
+  }
+
+  // отмена звонка
+  const cancelCall = () => {
+    console.log('method:cancelCall');
+    socket.emit(CallEvents.CANCEL_CALL, { collocutorId });
+    setCallStatus(CallStatus.CALL_CANCELLED);
     clearPeer();
     setCall({});
   }
@@ -222,7 +250,8 @@ export const VideoConnectionProvider = ({ children }: { children: React.ReactEle
       callCollocutor,
       answerCall,
       leaveCall,
-      declineCall
+      declineCall,
+      cancelCall
     }}>
       {children}
     </VideoConnectionContext.Provider>

@@ -32,7 +32,7 @@ const VideoConnection: React.FC = () => {
       <div className='flex justify-center py-2'>
         {/* Переключение видов */}
         {
-          callStatus === CallStatus.accepted &&
+          callStatus === CallStatus.CALL_ACCEPTED &&
           <div className='px-1'>
             <CircleButton 
               icon={MdOutlinePictureInPictureAlt} 
@@ -41,7 +41,7 @@ const VideoConnection: React.FC = () => {
           </div>
         }
         {/* Мут микрофона */}
-        <div className='px-1'>
+        <div className='flex space-x-4 px-1'>
           <CircleButton
             icon={isMicrophoneEnabled ? MdMic : MdMicOff}
             onClick={toggleMicrophone}
@@ -50,7 +50,7 @@ const VideoConnection: React.FC = () => {
         
         {/* Положить трубу */}
         {
-          callStatus === CallStatus.accepted &&
+          callStatus === CallStatus.CALL_ACCEPTED &&
           <div className='px-1'>
             <CircleButton
               icon={MdOutlinePhoneDisabled}

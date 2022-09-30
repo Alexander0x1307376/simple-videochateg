@@ -1,0 +1,12 @@
+{
+  "main": "index.ts",
+  "name": "@simple-videochateg/shared",
+  "version": "1.0.0",
+  "packageManager": "yarn@3.2.3",
+  "devDependencies": {
+    "typescript": "^4.8.4"
+  },
+  "scripts": {
+    "start": "tsc --watch"
+  }
+}

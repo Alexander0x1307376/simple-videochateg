@@ -71,18 +71,18 @@ const VideoSection: React.FC<VideoSectionProps> = ({isCollocutorMainView}) => {
   const currentClasses = (() => {
     switch(callStatus) {
 
-      case CallStatus.ended:
+      case CallStatus.CALL_ENDED:
         return idleClasses;
       
-      case CallStatus.collocutorIsCalling:
+      case CallStatus.INCOMING_CALL:
         return collocutorIsCallingClasses;
       
-      case CallStatus.accepted:
+      case CallStatus.CALL_ACCEPTED:
         return isCollocutorMainView 
           ? converSationClasses 
           : converSationClassesThisViewIsMain;
       
-      case CallStatus.thisUserIsCalling:
+      case CallStatus.OUTCOMING_CALL:
         return thisUserIsCallingClasses;
       
       default:
@@ -99,12 +99,18 @@ const VideoSection: React.FC<VideoSectionProps> = ({isCollocutorMainView}) => {
         <div className={currentClasses.idleMessage}>
           {(() => {
             switch(callStatus) {
-              case CallStatus.thisUserIsCalling:
+              case CallStatus.OUTCOMING_CALL:
                 return 'Звоним собеседнику...';
-              case CallStatus.ended:
+              case CallStatus.CALL_ENDED:
                 return 'Вызов завершен. Можно начать новый';
-              case CallStatus.declined:
+              case CallStatus.CALL_DISCONNECTED:
+                return 'Вызов сорвался';
+              case CallStatus.CALL_DECLINED:
                 return 'Вызов отклонён';
+              case CallStatus.CALL_CANCELLED:
+                return 'Вызов отменён';
+              case CallStatus.NO_COLLOCUTOR:
+                return 'Нет юзера с данным ключом';
               default:
                 return 'Ожидание собеседника';
             }
@@ -125,7 +131,7 @@ const VideoSection: React.FC<VideoSectionProps> = ({isCollocutorMainView}) => {
         
         {/* Морда собеседника */}
         {
-          callStatus === CallStatus.accepted &&
+          callStatus === CallStatus.CALL_ACCEPTED &&
           <div className={currentClasses.collocutorVideo}>
             <video
               className={"h-full w-full"}
