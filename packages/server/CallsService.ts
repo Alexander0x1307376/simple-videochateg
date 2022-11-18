@@ -31,7 +31,7 @@ export class CallsService {
   }
 
 
-  acceptCall(socketId: string): ResponseCode {
+  acceptCall(socketId: string): 'ok' | 'notFound' {
     // принятие - установка статуса onLine
     // принимаем если есть запись где socketId === call.receiverId и status === waitForAnswer
     const call = this.calls.find(item => 

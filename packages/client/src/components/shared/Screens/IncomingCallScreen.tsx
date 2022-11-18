@@ -1,12 +1,12 @@
 import React, { useContext } from "react";
 import { MdCall, MdCallEnd } from "react-icons/md";
-import { VideoConnectionContext } from "../../connection/videoConnectionContext";
-import CircleButton from "./CircleButton";
+import { VideoConnectionContext } from "../../../connection/videoConnectionContext";
+import CircleButton from "../CircleButton";
 
 
 const IncomingCallScreen: React.FC = () => {  
 
-  const {answerCall, declineCall} = useContext(VideoConnectionContext);
+  const { answerCall, declineCall } = useContext(VideoConnectionContext);
 
   return (
       <div className="w-full h-full flex flex-col justify-center">

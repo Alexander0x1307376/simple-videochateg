@@ -4,13 +4,14 @@ import cors from 'cors';
 import { Server } from 'socket.io';
 import { log } from './utils/logger';
 import { CallsService } from './CallsService';
-import { checkIsSocketIsConnected } from './utils/socketUtils';
-import { CallEvents } from '@simple-videochateg/shared';
+import { checkIfSocketIsConnected } from './utils/socketUtils';
+import { CallResponses, ClientToServerEvents } from '@simple-videochateg/shared';
+import { ServerToClientEvents } from '@simple-videochateg/shared';
 
 const app = express();
 const server = createServer(app);
 
-const io = new Server(server, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   cors: {
     origin: '*',
     methods: ["GET", "POST", "PUT", "DELETE"]
@@ -29,95 +30,108 @@ app.get('/', (req, res) => {
 
 
 
-
-
 const callService = new CallsService();
 
 io.on('connection', (socket) => {
+  log('Сокет подключён:', socket.id);
+  socket.emit('connectionKey', { connectionKey: socket.id });
 
-  log(`Соединение:`, socket.id);
-  socket.emit(CallEvents.SOCKET_ID, socket.id);
+
+  socket.on('callUser', ({ collocutorKey }, callback) => {
+
+    // если звоним себе
+    const callMyself = socket.id === collocutorKey;
+    if (callMyself) {
+      callback({ status: CallResponses.CALL_SELF });
+      return;
+    }
+
+    // если нет собеседника
+    const isThereCollocutor = checkIfSocketIsConnected(io, collocutorKey);
+    if (!isThereCollocutor) {
+      callback({ status: CallResponses.COLLOCUTOR_NOT_FOUND });
+      return;
+    }
+
+    // если с ключом всё нормально - начинаем звонок 
+    io.to(collocutorKey).emit('incomingCall', { collocutorKey: socket.id });
+    const callStatus = callService.startCall(socket.id, collocutorKey);
+
+    // если всё хорошо
+    if (callStatus === 'ok') {
+      log(`Звонок: ${socket.id} -> ${collocutorKey}`);
+      io.to(collocutorKey).emit('callUser', { callerKey: socket.id });
+      callback({ status: CallResponses.OK });
+      return;
+    }
+
+    // если абонент уже с кем-то разговаривает
+    else if(callStatus === 'otherCallInProgress') {
+      log(`Звонок: ${socket.id} -> ${collocutorKey}. Абонент занят`);
+      callback({ status: CallResponses.OTHER_CALL_IN_PROGRESS });
+      return;
+    }
+
+    // в остальных случаях
+    callback({ status: CallResponses.CALL_IS_NOT_ALLOWED });
+
+  });
+  
+
+  socket.on('acceptCall', ( { collocutorKey }, callback) => {
+    const callStatus = callService.acceptCall(collocutorKey);
+    if (callStatus === 'ok') {
+      // собеседнику
+      io.to(collocutorKey).emit('callAccepted', {
+        collocutorKey: socket.id,
+        status: callStatus
+      });
+      log(`Звонок: ${collocutorKey} -> ${socket.id}. Принят собеседником`);
+    }
+    else if (callStatus === 'notFound')
+      log(`Звонок: ${collocutorKey} -> ${socket.id}. Вызов не найден`);
+    // нам
+    callback({ callStatus });
+  });
 
 
-  socket.on('disconnect', () => {
-    log(`Отключение: ${socket.id}`);
+  socket.on('peerOffer', ({ collocutorKey, signal }) => {
+    log(`Пиринговое соединение: ${socket.id} <-> ${collocutorKey}`);
+    io.to(collocutorKey).emit('peerOffer', signal);
+  });
 
+
+  socket.on('peerAnswer', ({ collocutorKey, signal }) => {
+    log(`Пиринговое соединение: ${socket.id} - ${collocutorKey}. Ответ`);
+    io.to(collocutorKey).emit('peerAnswer', signal);
+  });
+
+
+  socket.on('cancelCall', ({ collocutorKey }) => {
+    log(`Звонок: ${socket.id} - ${collocutorKey}. Отменён звонящим`);
+    const callData = callService.endCall(socket.id);
+    if (callData)
+      io.to(collocutorKey).emit('callEnded', {collocutorKey: socket.id, response: CallResponses.CALL_CANCELED});
+  });
+
+  socket.on('endCall', ({ collocutorKey, response }) => {
     const callData = callService.endCall(socket.id);
     if (callData) {
-      const collocutorId = callData.receiverId === socket.id 
-        ? callData.senderId
-        : callData.receiverId;
-      io.to(collocutorId).emit(CallEvents.COLLOCUTOR_DISCONNECTED, { collocutorId });
-    }
-
-  });
-
-  socket.on(CallEvents.CALL_USER_CHECK, ({ collocutorId }, callback) => {
-    const isThereCollocutor = checkIsSocketIsConnected(io, collocutorId);
-    const callMyself = socket.id === collocutorId;
-    callback({ 
-      callAllowed: isThereCollocutor && !callMyself 
-    });
-  });
-
-  socket.on(CallEvents.CALL_USER, ({ collocutorId, signalData }) => {
-    log(`Звонок: ${socket.id} -> ${collocutorId}`);
-
-    const callStatus = callService.startCall(socket.id, collocutorId);
-
-    if (callStatus === 'otherCallInProgress') {
-      socket.emit(CallEvents.OTHER_CALL_IN_PROGRESS, { collocutorId });
-    }
-    else if(callStatus === 'ok') {
-      io.to(collocutorId).emit(CallEvents.CALL_USER, { signal: signalData, from: socket.id });
-    }
-
-  });
-
-
-  socket.on(CallEvents.CANCEL_CALL, ({ collocutorId }) => {
-    log(`Звонок: ${socket.id} -> ${collocutorId}. Отменён звонящим`);
-
-    const callStatus = callService.endCall(socket.id);
-    if (callStatus) {
-      io.to(collocutorId).emit(CallEvents.CALL_CANCELED, { collocutorId: socket.id });
-    }
-
-  });
-
-
-  // принимаем входящий звонок
-  socket.on(CallEvents.ANSWER_CALL, ({ signal, collocutorId }) => {
-    log(`Звонок: ${collocutorId} -> ${socket.id}. Ответ`);
-
-    const callStatus = callService.acceptCall(collocutorId);
-    log(`callStatus: ${callStatus}`);
-    if (callStatus === 'ok') {
-      io.to(collocutorId).emit(CallEvents.CALL_ACCEPTED, signal);
-    }
-
-  });
-
-
-  socket.on(CallEvents.LEAVE_CALL, ({ collocutorId }) => {
-    log(`Звонок: ${collocutorId} : ${socket.id}. Завершен`);
-
-    const callStatus = callService.endCall(socket.id);
-    if (callStatus) {
-      io.to(collocutorId).emit(CallEvents.CALL_ENDED, socket.id);
+      io.to(callData.receiverId === collocutorKey ? callData.receiverId : callData.senderId)
+        .emit('callEnded', { collocutorKey: socket.id, response });
     }
   });
 
-
-  socket.on(CallEvents.DECLINE_CALL, ({ collocutorId }) => {
-    log(`Звонок: ${collocutorId} -> ${socket.id}. Отклонён принимающим`);
-
-    callService.endCall(socket.id);
-
-    io.to(collocutorId).emit(CallEvents.CALL_DECLINED);
+  socket.on('disconnect', () => {
+    const callData = callService.endCall(socket.id);
+    if (callData) {
+      io.to(callData.senderId === socket.id ? callData.receiverId : callData.senderId)
+        .emit('callEnded', { collocutorKey: socket.id, response: CallResponses.LOST_CONNECTION });
+    }
   });
 
 });
+
 
 server.listen(port, () => {
   console.log(`server is listening on port ${port}`);
